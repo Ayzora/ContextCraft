@@ -1,0 +1,4 @@
+.env 
+chatlog.json
+vectorstore.json
+node_modules/
