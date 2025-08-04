@@ -5,12 +5,12 @@ const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.POST || 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-//--------------------- /chat endpoints -------------------------
+//--------------------- /chat endpoints ---------------------------
 app.post("/chat", async (req, res) => {
 
   const userMessage = req.body.message;
@@ -26,7 +26,7 @@ app.post("/chat", async (req, res) => {
     });
     const assitantMessage = response.data.response;
 
-    //save both messages to chatlog.json
+    //save both messages to chat log.json
     const logEntry = {
       user: userMessage,
       assistant: assitantMessage,
