@@ -2,3 +2,5 @@
 chatlog.json
 vectorstore.json
 node_modules/
+__pycache__
+uploads
