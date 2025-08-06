@@ -1,19 +1,21 @@
+// Import required modules
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs").promises;
-const axios = require("axios");
-const multer = require("multer");
-const { error } = require("console");
+const fs = require("fs").promises; // Promises-based file system module
+const axios = require("axios"); // HTTP client for making API requests
+const multer = require("multer"); // Middleware for handling file uploads
+const { error } = require("console"); // Console utility for logging errors
+
+// Configure multer for file uploads
 const upload = multer({
-  dest: "uploads/",
+  dest: "uploads/", // Directory where uploaded files are stored
   fileFilter: (req, file, cb) => {
-    // Allow only files with text-based MIME types
+    // Allow only files with specific MIME types
     const allowedMimeTypes = [
       "application/pdf", // PDFs
       "text/plain", // Plain text files
       "application/msword", // Word documents
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // Word (docx)
-      //allow code files
       "text/x-python", // Python files
     ];
 
@@ -27,62 +29,78 @@ const upload = multer({
   },
 });
 
+// Load environment variables from .env file
 require("dotenv").config();
 
+// Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; // Use port from environment or default to 3000
 
+// Middleware for handling CORS and JSON requests
 app.use(cors());
 app.use(express.json());
 
 //--------------------- /chat endpoints ----------------------------
+
+/**
+ * Chat endpoint to handle user messages and generate assistant responses
+ */
 app.post("/chat", async (req, res) => {
-  const userMessage = req.body.message;
+  const userMessage = req.body.message; // Extract user message from request body
   if (!userMessage) {
-    return res.status(404).json({ error: "Message is required" });
+    return res.status(404).json({ error: "Message is required" }); // Return error if message is missing
   }
 
   try {
+    // Make API request to generate assistant response
     const response = await axios.post("http://localhost:11434/api/generate", {
-      model: "llama3.1:8b",
-      prompt: userMessage,
-      stream: false,
+      model: "llama3.1:8b", // Specify model
+      prompt: userMessage, // Pass user message as prompt
+      stream: false, // Disable streaming
     });
-    const assitantMessage = response.data.response;
+    const assitantMessage = response.data.response; // Extract assistant response
 
-    //save both messages to chat log.json
+    // Save both messages to chat log
     const logEntry = {
       user: userMessage,
       assistant: assitantMessage,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString(), // Add timestamp
     };
-    saveTochatLog(logEntry);
-    res.json({ response: assitantMessage });
+    saveTochatLog(logEntry); // Save log entry to chatlog.json
+    res.json({ response: assitantMessage }); // Send assistant response to client
   } catch (error) {
-    console.error("Error generating response:", error);
-    res.status(500).json({ error: "Failed to generate response" });
+    console.error("Error generating response:", error); // Log error
+    res.status(500).json({ error: "Failed to generate response" }); // Return error response
   }
 });
 
 // -------------  /upload endpoints ------------------------------------
+
+/**
+ * Upload endpoint to handle file uploads and create embeddings
+ */
 app.post("/upload", upload.single("file"), async (req, res, next) => {
   try {
-    const dataChunks = await saveFileContent(req.file.filename);
+    const dataChunks = await saveFileContent(req.file.filename); // Split file content into chunks
 
+    // Create embeddings for each chunk
     for (let i = 0; i < dataChunks.length; i++) {
-        createEmbedding(dataChunks[i])
-        
-      
+      createEmbedding(dataChunks[i]);
     }
 
-    console.log('FINISHED EMBEDDING ALL THE CHUNKS')
-    res.status(200).send()
+    console.log("FINISHED EMBEDDING ALL THE CHUNKS"); // Log completion
+    res.status(200).send(); // Send success response
   } catch (err) {
-    next(err);
+    next(err); // Pass error to global error handler
   }
 });
 
-//functionss
+//--------------------- Utility Functions ----------------------------
+
+/**
+ * Save chat log entry to chatlog.json
+ * @param {Object} entry - Chat log entry containing user and assistant messages
+ */
 function saveTochatLog(entry) {
   const logFile = "chatlog.json";
   let chatLog = [];
@@ -92,32 +110,39 @@ function saveTochatLog(entry) {
     const data = fs.readFileSync(logFile, "utf8");
     if (data) {
       try {
-        chatLog = JSON.parse(data);
+        chatLog = JSON.parse(data); // Parse existing log
       } catch (e) {
-        console.error("Error parsing chatlog.json:", e);
-        chatLog = [];
+        console.error("Error parsing chatlog.json:", e); // Log error
+        chatLog = []; // Initialize as empty array
       }
     }
   }
 
   // Add new entry and save
   chatLog.push(entry);
-  fs.writeFileSync(logFile, JSON.stringify(chatLog, null, 2), "utf8");
+  fs.writeFileSync(logFile, JSON.stringify(chatLog, null, 2), "utf8"); // Write updated log
 }
- 
+
+/**
+ * Read and split file content into chunks
+ * @param {string} file - Filename of the uploaded file
+ * @returns {Array} - Array of text chunks
+ */
 async function saveFileContent(file) {
   try {
-    const data = await fs.readFile(`uploads/${file}`, "utf8");
+    const data = await fs.readFile(`uploads/${file}`, "utf8"); // Read file content
 
-    let dataArray = data.split(" ");
+    let dataArray = data.split(" "); // Split content into words
     let dataChunks = [];
     let sliceStart = 0;
 
+    // Handle small files
     if (dataArray.length < 500) {
       dataChunks.push(dataArray.join(" "));
       return dataChunks;
     }
 
+    // Split content into chunks of 500 words
     for (let i = 0; i < dataArray.length; i++) {
       if (i % 500 === 0 && i !== 0) {
         let chunk = dataArray.slice(sliceStart, i);
@@ -131,8 +156,8 @@ async function saveFileContent(file) {
       const finalChunk = dataArray.slice(sliceStart);
       dataChunks.push(finalChunk.join(" "));
     }
-    console.log("File uploaded and chunks returned")
-    return dataChunks;
+    console.log("File uploaded and chunks returned");
+    return dataChunks; // Return chunks
   } catch (err) {
     const error = new Error("File is unreadable or corrupted");
     error.status = 400; // Set a status code for the error
@@ -140,13 +165,17 @@ async function saveFileContent(file) {
   }
 }
 
+/**
+ * Create embedding for a text chunk and save to vectors.json
+ * @param {string} chunk - Text chunk to embed
+ */
 async function createEmbedding(chunk) {
   try {
     const response = await axios.post("http://localhost:5000/embed", {
-      text: chunk,
+      text: chunk, // Pass chunk as text
     });
-    console.log("Embed response:", response.data);
-    const embedding = response.data.embedding;
+    console.log("Embed response:", response.data); // Log response
+    const embedding = response.data.embedding; // Extract embedding
 
     const vectorData = { text: chunk, embedding: embedding };
 
@@ -167,21 +196,30 @@ async function createEmbedding(chunk) {
     await fs.writeFile("vectors.json", JSON.stringify(existingData, null, 2), "utf8");
     console.log("Vector data appended successfully");
   } catch (err) {
-    console.error("Error embedding the chunk:", err);
+    console.error("Error embedding the chunk:", err); // Log error
     err.message = "Error embedding the chunk";
     err.status = 500;
-    throw err;
+    throw err; // Throw error to be caught by the error handler
   }
-};
+}
 
+//--------------------- Error Handling ----------------------------
 
+/**
+ * Global error handler
+ */
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error(err.stack); // Log error stack
   res
-    .status(err.status || 500)
-    .json({ error: err.message || "Internal Server Error" });
+    .status(err.status || 500) // Use error status or default to 500
+    .json({ error: err.message || "Internal Server Error" }); // Send error response
 });
 
+//--------------------- Start Server ----------------------------
+
+/**
+ * Start the server
+ */
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`); // Log server start
 });
