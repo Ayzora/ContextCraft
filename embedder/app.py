@@ -11,4 +11,5 @@ class EmbedRequest(BaseModel):
 @app.post("/embed")
 async def embed_text(req: EmbedRequest):
     embedding = model.encode(req.text).tolist()
+    print({"embedding": embedding})
     return {"embedding": embedding}

@@ -3,6 +3,7 @@ const cors = require("cors");
 const fs = require("fs").promises;
 const axios = require("axios");
 const multer = require("multer");
+const { error } = require("console");
 const upload = multer({
   dest: "uploads/",
   fileFilter: (req, file, cb) => {
@@ -67,13 +68,21 @@ app.post("/chat", async (req, res) => {
 app.post("/upload", upload.single("file"), async (req, res, next) => {
   try {
     const dataChunks = await saveFileContent(req.file.filename);
-    res.send("UPLOADED SUCCESSFULLY!");
+
+    for (let i = 0; i < dataChunks.length; i++) {
+        createEmbedding(dataChunks[i])
+        
+      
+    }
+
+    console.log('FINISHED EMBEDDING ALL THE CHUNKS')
+    res.status(200).send()
   } catch (err) {
     next(err);
   }
 });
 
-//functions
+//functionss
 function saveTochatLog(entry) {
   const logFile = "chatlog.json";
   let chatLog = [];
@@ -95,9 +104,8 @@ function saveTochatLog(entry) {
   chatLog.push(entry);
   fs.writeFileSync(logFile, JSON.stringify(chatLog, null, 2), "utf8");
 }
-
+ 
 async function saveFileContent(file) {
-  
   try {
     const data = await fs.readFile(`uploads/${file}`, "utf8");
 
@@ -123,7 +131,7 @@ async function saveFileContent(file) {
       const finalChunk = dataArray.slice(sliceStart);
       dataChunks.push(finalChunk.join(" "));
     }
-
+    console.log("File uploaded and chunks returned")
     return dataChunks;
   } catch (err) {
     const error = new Error("File is unreadable or corrupted");
@@ -131,6 +139,41 @@ async function saveFileContent(file) {
     throw error; // Throw the error to be caught by the error handler
   }
 }
+
+async function createEmbedding(chunk) {
+  try {
+    const response = await axios.post("http://localhost:5000/embed", {
+      text: chunk,
+    });
+    console.log("Embed response:", response.data);
+    const embedding = response.data.embedding;
+
+    const vectorData = { text: chunk, embedding: embedding };
+
+    // Read existing vectors.json content
+    let existingData = [];
+    try {
+      const fileContent = await fs.readFile("vectors.json", "utf8");
+      existingData = JSON.parse(fileContent); // Parse existing JSON content
+    } catch (err) {
+      console.warn("vectors.json not found or invalid, initializing as an empty array.");
+      existingData = []; // Initialize as an empty array
+    }
+
+    // Append new vector data
+    existingData.push(vectorData);
+
+    // Write updated content back to vectors.json
+    await fs.writeFile("vectors.json", JSON.stringify(existingData, null, 2), "utf8");
+    console.log("Vector data appended successfully");
+  } catch (err) {
+    console.error("Error embedding the chunk:", err);
+    err.message = "Error embedding the chunk";
+    err.status = 500;
+    throw err;
+  }
+};
+
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
