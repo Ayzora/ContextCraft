@@ -1,7 +1,8 @@
 // Import required modules
 const express = require("express");
 const cors = require("cors");
-const fs = require("fs").promises; // Promises-based file system module
+const { readFile, writeFile } = require("fs").promises; // Destructure specific methods
+const fs = require("fs"); // Keep sync methods if needed (e.g., existsSync)
 const axios = require("axios"); // HTTP client for making API requests
 const multer = require("multer"); // Middleware for handling file uploads
 const { error } = require("console"); // Console utility for logging errors
@@ -52,10 +53,38 @@ app.post("/chat", async (req, res) => {
   }
 
   try {
+    const userMessageEmbedding = await generateUserQueryEmbedding(userMessage); //embed user query
+    const vectorData = await readVectorDatabase();
+
+    // Rank chunks by similarity
+    const rankedChunks = vectorData
+      .map((item) => ({
+        text: item.text,
+        similarity: cosineSimilarity(userMessageEmbedding, item.embedding),
+      }))
+      .sort((a, b) => b.similarity - a.similarity); // High similarity first
+
+    // Take top 3 results
+    const topChunks = rankedChunks.slice(0, 3);
+
+    const context = topChunks.map(c => c.text).join("\n\n");
+
+    const prompt = `
+    You are an AI assistant. Use the following context to answer the user's question.
+
+    Context:
+    ${context}
+
+    User: ${userMessage}
+    Assistant:
+    `;
+
+
+    //JUST WROTE THE TWO ABOVE
     // Make API request to generate assistant response
     const response = await axios.post("http://localhost:11434/api/generate", {
       model: "llama3.1:8b", // Specify model
-      prompt: userMessage, // Pass user message as prompt
+      prompt: prompt, // Pass user message as prompt
       stream: false, // Disable streaming
     });
     const assitantMessage = response.data.response; // Extract assistant response
@@ -130,7 +159,7 @@ function saveTochatLog(entry) {
  */
 async function saveFileContent(file) {
   try {
-    const data = await fs.readFile(`uploads/${file}`, "utf8"); // Read file content
+    const data = await readFile(`uploads/${file}`, "utf8"); // Read file content
 
     let dataArray = data.split(" "); // Split content into words
     let dataChunks = [];
@@ -182,10 +211,12 @@ async function createEmbedding(chunk) {
     // Read existing vectors.json content
     let existingData = [];
     try {
-      const fileContent = await fs.readFile("vectors.json", "utf8");
+      const fileContent = await readFile("vectors.json", "utf8");
       existingData = JSON.parse(fileContent); // Parse existing JSON content
     } catch (err) {
-      console.warn("vectors.json not found or invalid, initializing as an empty array.");
+      console.warn(
+        "vectors.json not found or invalid, initializing as an empty array."
+      );
       existingData = []; // Initialize as an empty array
     }
 
@@ -193,7 +224,11 @@ async function createEmbedding(chunk) {
     existingData.push(vectorData);
 
     // Write updated content back to vectors.json
-    await fs.writeFile("vectors.json", JSON.stringify(existingData, null, 2), "utf8");
+    await writeFile(
+      "vectors.json",
+      JSON.stringify(existingData, null, 2),
+      "utf8"
+    );
     console.log("Vector data appended successfully");
   } catch (err) {
     console.error("Error embedding the chunk:", err); // Log error
@@ -202,6 +237,43 @@ async function createEmbedding(chunk) {
     throw err; // Throw error to be caught by the error handler
   }
 }
+
+async function generateUserQueryEmbedding(query) {
+  try {
+    const response = await axios.post("http://localhost:5000/embed", {
+      text: query,
+    });
+    return response.data.embedding;
+  } catch (err) {
+    console.error("Error embedding user query:", err);
+    throw Object.assign(new Error("Could not create user query"), {
+      status: 500,
+    });
+  }
+}
+
+async function readVectorDatabase() {
+  try {
+    const vectorDataContent = await readFile("vectors.json", "utf-8");
+    return JSON.parse(vectorDataContent);
+  } catch (err) {
+    console.warn("data does not exist");
+  }
+}
+
+function cosineSimilarity(vecA, vecB) {
+  const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+  const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+  if (magnitudeA === 0 || magnitudeB === 0) return 0;
+  return dotProduct / (magnitudeA * magnitudeB);
+}
+
+
+async function getRecentChatHistory(limit = 10) {
+  
+}
+
 
 //--------------------- Error Handling ----------------------------
 
