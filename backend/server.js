@@ -52,16 +52,37 @@ app.post("/chat", async (req, res) => {
     // Take top 3 results
     const topChunks = rankedChunks.slice(0, 3);
     const context = topChunks.map((c) => c.text).join("\n\n");
+    const chatHistory = getRecentChatHistory();
 
     const prompt = `
-    You are an AI assistant. Use the following context to answer the user's question.
+ You are a helpful AI assistant. Use the information from the following context if relevant, along with your own knowledge, to answer the user's question.
 
-    Context:
+
+    Context(the files user has uploaded):
     ${context}
 
+    Conversation History:
+    ${chatHistory}
+
+    Current Question:
     User: ${userMessage}
     Assistant:
     `;
+
+    // You are an AI assistant. Use the following context and recent conversation history to answer the user's question.
+
+    // Context:
+    // <--- vector-based top chunks --->
+
+    // Conversation History:
+    // User: ...
+    // Assistant: ...
+    // User: ...
+    // Assistant: ...
+
+    // Current Question:
+    // User: <userMessage>
+    // Assistant:
 
     // Make API request to generate assistant response
     const response = await require("axios").post(
@@ -123,20 +144,3 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
-
-
-// You are an AI assistant. Use the following context and recent conversation history to answer the user's question.
-
-// Context:
-// <--- vector-based top chunks --->
-
-// Conversation History:
-// User: ...
-// Assistant: ...
-// User: ...
-// Assistant: ...
-
-// Current Question:
-// User: <userMessage>
-// Assistant:
